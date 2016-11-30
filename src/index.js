@@ -18,7 +18,7 @@ import {
   getOperationAST,
   specifiedRules
 } from 'graphql';
-import httpError from 'http-errors';
+import httpError from './httpError';
 import url from 'url';
 
 import { parseBody } from './parseBody';
@@ -29,7 +29,6 @@ import type {
   GraphQLError,
   GraphQLSchema
 } from 'graphql';
-import type { Response } from 'express';
 
 export type Request = {
   method: string;
@@ -131,7 +130,29 @@ type Middleware = (request: Request, response: Response) => Promise<void>;
  * Middleware for express; takes an options object or function as input to
  * configure behavior, and returns an express middleware.
  */
-module.exports = graphqlHTTP;
+module.exports = graphqlServerless;
+
+function graphqlServerless(options: Options): Middleware {
+  return (event, context, callback) => {
+    try {
+      const headers = {};
+      graphqlHTTP(options)(event, {
+        setHeader: (key, value) => {
+          headers[key] = value;
+        },
+        send: data => {
+          callback(null, { headers, body: data });
+        }
+      });
+    } catch (error) {
+      if (error.statusCode) {
+        return callback(error);
+      }
+      throw error;
+    }
+  };
+}
+
 function graphqlHTTP(options: Options): Middleware {
   if (!options) {
     throw new Error('GraphQL middleware requires options.');
